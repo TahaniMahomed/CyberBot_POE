@@ -1,75 +1,152 @@
 ﻿using System;
+using System.Collections.Generic;
 
-namespace CyberBot
+namespace CyberBot_POE
 {
-    public class Chatbot
+    public class chatbot
     {
-        public string BotName { get; set; } = "ShieldBot";
-        public string UserName { get; set; }
+        public string UserName { get; set; } = "User";
+        private bool isFirstMessage = true;
+        private Random random = new Random();
 
-        /// <summary>
-        /// Processes the user's string input and provides detailed, localized safety advice.
-        /// </summary>
-        public void HandleUserQuery(string input)
+        // Memory Variables (Requirement 4 & 5)
+        private string lastTopic = "";
+        private string favoriteTopic = "";
+        private string lastBotQuestion = ""; // NEW: Tracks what the bot just asked you
+
+        public string HandleUserQuery(string input)
         {
-            // 1. Validation: Handle empty or accidental whitespace
-            if (string.IsNullOrWhiteSpace(input))
-            {
-                UserInterface.TypeLine($"I'm sorry, {UserName}, I didn't catch that. Could you please type your question again?", ConsoleColor.Red);
-                return;
-            }
-
+            if (string.IsNullOrWhiteSpace(input)) return "I'm sorry, I didn't catch that. Could you try again?";
             string cleanInput = input.ToLower().Trim();
 
-            // 2. Response Logic: Detailed and Engaging
-            if (cleanInput.Contains("purpose") || cleanInput.Contains("who are you"))
+            // 1. Personalized Onboarding
+            if (isFirstMessage)
             {
-                UserInterface.TypeLine($"That's a great question, {UserName}! My primary mission is to educate South African citizens on digital safety.");
-                UserInterface.TypeLine("I'm here to help you recognize local cyber-crimes and protect your personal information in our digital economy.");
+                UserName = input;
+                isFirstMessage = false;
+                return $"Hello {UserName}! I'm ShieldBot. I'm here to help you navigate the digital world safely. Is there a specific cybersecurity topic you're curious about today?";
             }
-            else if (cleanInput.Contains("phishing") || cleanInput.Contains("email"))
+
+            // 2. Handling Answers to Small Talk (e.g., "How was your day?")
+            if (lastBotQuestion == "how_was_day")
             {
-                UserInterface.TypeLine($"Listen closely, {UserName}, phishing is a major threat in SA right now.", ConsoleColor.Yellow);
-                UserInterface.TypeLine("Scammers often pretend to be banks like FNB, ABSA, or Standard Bank. They might send an SMS or Email saying your account is blocked.");
-                UserInterface.TypeLine("Tip: Never click those links! A real bank will never ask for your PIN or password via a link.");
+                lastBotQuestion = "";
+                return $"I'm glad to hear that, {UserName}! It's always good to check in. Now, back to business—was there anything about passwords or scams you wanted to ask me?";
             }
-            else if (cleanInput.Contains("password"))
+
+            // 3. Handling Yes/No to "Do you want another example?"
+            if (lastBotQuestion == "want_more" || lastBotQuestion == "was_helpful")
             {
-                UserInterface.TypeLine($"Security starts with a strong foundation, {UserName}!", ConsoleColor.Green);
-                UserInterface.TypeLine("Avoid using simple things like '12345' or your birthday. Instead, use a 'passphrase'—four random words joined together.");
-                UserInterface.TypeLine("Example: 'Blue-Table-Mountain-Sun!' is much harder for a hacker to crack than a single word.");
+                lastBotQuestion = "";
+                if (cleanInput.Contains("yes") || cleanInput.Contains("sure") || cleanInput.Contains("yep") || cleanInput.Contains("please"))
+                {
+                    return $"Happy to help, {UserName}! Here is another perspective on {lastTopic}: {GetTopicDetail(lastTopic)} \n\nShould I keep going, or is that enough for now?";
+                }
+                else if (cleanInput.Contains("no") || cleanInput.Contains("i'm good") || cleanInput.Contains("stop"))
+                {
+                    return $"No problem at all, {UserName}. I'll stay quiet until you need me again. What's next on your mind?";
+                }
             }
-            else if (cleanInput.Contains("scam") || cleanInput.Contains("money"))
+
+            // 4. Handling "I have a question"
+            if (cleanInput.Contains("have a question") || cleanInput.Contains("can i ask"))
             {
-                UserInterface.TypeLine($"{UserName}, if an online 'investment' or 'prize' sounds too good to be true, it almost certainly is.", ConsoleColor.Yellow);
-                UserInterface.TypeLine("Be very careful with WhatsApp messages offering quick cash or jobs that ask for an upfront 'registration fee'.");
+                return $"Of course, {UserName}! I'm listening. Please go ahead and ask your question.";
             }
-            else if (cleanInput.Contains("virus") || cleanInput.Contains("malware"))
+
+            // 5. Handling "Tell me more" / "Another example" (Step 3 & 4)
+            if (cleanInput.Contains("more") || cleanInput.Contains("another") || cleanInput.Contains("explain"))
             {
-                UserInterface.TypeLine($"I understand your concern about viruses, {UserName}.", ConsoleColor.Red);
-                UserInterface.TypeLine("A virus can steal your files or spy on your typing. To stay safe, ensure your Windows Defender is active and never download 'cracked' software.");
+                if (string.IsNullOrEmpty(lastTopic))
+                    return $"I'd love to explain more, {UserName}! But what should we talk about? (e.g. Passwords, Scams, Wi-Fi)";
+
+                return $"Certainly, {UserName}. Here is another example regarding {lastTopic}: {GetTopicDetail(lastTopic)} \n\nWould you like one more, or does that make sense?";
             }
-            else if (cleanInput.Contains("how are you"))
+
+            // 6. Topic Detection (Step 2: Definitions)
+            string detectedTopic = DetermineTopic(cleanInput);
+            if (!string.IsNullOrEmpty(detectedTopic))
             {
-                UserInterface.TypeLine($"I'm functioning perfectly and feeling ready to protect, {UserName}! I'm glad you asked.");
-                UserInterface.TypeLine("How are you finding the portal so far? Is there a specific security topic you're worried about?");
+                lastTopic = detectedTopic;
+                lastBotQuestion = "was_helpful";
+                return GetTopicDefinition(detectedTopic);
             }
-            else if (cleanInput.Contains("help") || cleanInput.Contains("menu"))
+
+            // 7. Small Talk
+            if (cleanInput.Contains("how are you"))
             {
-                UserInterface.TypeLine($"Of course, {UserName}! I can help you with several topics.");
-                UserInterface.TypeLine("You can ask me about: \n- 'Phishing' (Fake bank messages)\n- 'Passwords' (How to stay secure)\n- 'Scams' (Online fraud)\n- 'Viruses' (Protecting your PC)");
+                lastBotQuestion = "how_was_day";
+                return $"I'm doing great, {UserName}, thank you for asking! I'm feeling fully powered. How has your day been so far?";
             }
-            else if (cleanInput.Contains("identity") || cleanInput.Contains("id"))
+
+            // 8. Storing Interests (Step 5)
+            if (cleanInput.Contains("interested in") || cleanInput.Contains("like learning"))
             {
-                UserInterface.TypeLine($"{UserName}, identity theft is serious. Never share your SA ID number or a photo of your ID on social media.");
-                UserInterface.TypeLine("If you lose your phone, contact your bank immediately to secure your apps.");
+                favoriteTopic = DetermineTopic(cleanInput);
+                if (!string.IsNullOrEmpty(favoriteTopic))
+                    return $"I've noted that {favoriteTopic} is a priority for you, {UserName}! Would you like the basic definition of that topic?";
             }
-            // 3. Fallback: Friendly guidance when keywords aren't met
+
+            // 9. Recall Advice
+            if (cleanInput.Contains("advice") || cleanInput.Contains("tip"))
+            {
+                if (!string.IsNullOrEmpty(favoriteTopic))
+                    return $"Since you're interested in {favoriteTopic}, {UserName}, here is a pro-tip: {GetTopicDetail(favoriteTopic)}";
+
+                return $"I'd be happy to give some advice, {UserName}! Are you worried about passwords, social media, or maybe public Wi-Fi?";
+            }
+
+            // Final Fallback
+            return $"I'm not 100% sure I follow, {UserName}. Could you try rephrasing that for me?";
+        }
+
+        private string DetermineTopic(string input)
+        {
+            if (input.Contains("password")) return "passwords";
+            if (input.Contains("scam")) return "online scams";
+            if (input.Contains("social") || input.Contains("media")) return "social media safety";
+            if (input.Contains("wifi") || input.Contains("wi-fi")) return "public wi-fi security";
+            if (input.Contains("2fa") || input.Contains("factor") || input.Contains("auth")) return "two-factor authentication";
+            return "";
+        }
+
+        private string GetTopicDefinition(string topic)
+        {
+            string def = "";
+            switch (topic)
+            {
+                case "passwords": def = "Passwords are secret strings used to verify your identity."; break;
+                case "online scams": def = "Online scams are fraudulent schemes tricking you into giving away money or data."; break;
+                case "social media safety": def = "This is about the settings you use to stay private on platforms like Instagram."; break;
+                case "public wi-fi security": def = "This is the practice of protecting your data on open networks in public places."; break;
+                case "two-factor authentication": def = "2FA is a security layer that requires two forms of ID to access an account."; break;
+            }
+            return $"Sure, {UserName}. {def}\n\nWould you like me to give you a real-world example of this?";
+        }
+
+        // Expanded Tips for Randomization (Step 3)
+        private string GetTopicDetail(string topic)
+        {
+            List<string> tips = new List<string>();
+            if (topic == "passwords")
+            {
+                tips.Add("Using a passphrase like 'Coffee-Durban-Sunset-2026' is much harder to crack than 'Password123'.");
+                tips.Add("I always recommend using a Password Manager so you don't have to write them down.");
+                tips.Add("Adding a special character in the middle of a word is better than putting it at the end!");
+            }
+            else if (topic == "online scams")
+            {
+                tips.Add("A common SA scam is a fake SMS saying your bank account is blocked—don't click the link!");
+                tips.Add("Be careful of 'Crypto' experts on Instagram promising to double your money in a week.");
+                tips.Add("If someone calls from 'Microsoft' saying your PC has a virus, just hang up.");
+            }
             else
             {
-                UserInterface.TypeLine($"I'm not quite sure about that specific topic yet, {UserName}, but I am constantly learning!", ConsoleColor.Gray);
-                UserInterface.TypeLine("Try asking me about 'Phishing', 'Passwords', 'Scams', or 'Identity Theft'. I'm here to help!");
+                tips.Add("Always keep your phone's software updated to the latest version.");
+                tips.Add("Think twice before clicking any link that creates a sense of urgency.");
             }
+
+            return tips[random.Next(tips.Count)];
         }
     }
 }
